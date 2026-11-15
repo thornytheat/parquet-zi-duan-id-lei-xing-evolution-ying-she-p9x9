@@ -1,0 +1,45 @@
+{
+  "key": "D",
+  "label": "D · 三版可发布谱系（改名 + 类型提升 + 新增带默认值）",
+  "table": "dws_member_profile",
+  "description": "会员画像表从 v1 演进到 v3：nickname 在 v2 改名为 display_name（同 field_id，需人工确认是否为改名而非 id 复用）、member_level 由 int32 提升到 int64、v2 新增 loyalty_points（非空带默认值 0）、v3 新增可空列 region。样例已附带 same_field 决议，用于演示「歧义先隔离、再合成可发布谱系」。",
+  "expected": "可发布 / 1 项身份歧义已决议 / 类型提升兼容 / 1 个回填对象",
+  "resolutions": {
+    "v1-2025.06>v2-2025.12:id:2:nickname>display_name": "same_field"
+  },
+  "versions": [
+    {
+      "version": "v1-2025.06",
+      "window": "dt < '2025-12-01'",
+      "fields": [
+        {"id": 1, "name": "member_id", "type": "string", "nullable": false, "default": null, "partition": false},
+        {"id": 2, "name": "nickname", "type": "string", "nullable": true, "default": null, "partition": false},
+        {"id": 3, "name": "member_level", "type": "int32", "nullable": false, "default": null, "partition": false},
+        {"id": 4, "name": "dt", "type": "date", "nullable": false, "default": null, "partition": true}
+      ]
+    },
+    {
+      "version": "v2-2025.12",
+      "window": "dt >= '2025-12-01' AND dt < '2026-06-01'",
+      "fields": [
+        {"id": 1, "name": "member_id", "type": "string", "nullable": false, "default": null, "partition": false},
+        {"id": 2, "name": "display_name", "type": "string", "nullable": true, "default": null, "partition": false},
+        {"id": 3, "name": "member_level", "type": "int32", "nullable": false, "default": null, "partition": false},
+        {"id": 4, "name": "dt", "type": "date", "nullable": false, "default": null, "partition": true},
+        {"id": 6, "name": "loyalty_points", "type": "int64", "nullable": false, "default": 0, "partition": false}
+      ]
+    },
+    {
+      "version": "v3-2026.06",
+      "window": "dt >= '2026-06-01'",
+      "fields": [
+        {"id": 1, "name": "member_id", "type": "string", "nullable": false, "default": null, "partition": false},
+        {"id": 2, "name": "display_name", "type": "string", "nullable": true, "default": null, "partition": false},
+        {"id": 3, "name": "member_level", "type": "int64", "nullable": false, "default": null, "partition": false},
+        {"id": 4, "name": "dt", "type": "date", "nullable": false, "default": null, "partition": true},
+        {"id": 6, "name": "loyalty_points", "type": "int64", "nullable": false, "default": 0, "partition": false},
+        {"id": 7, "name": "region", "type": "string", "nullable": true, "default": null, "partition": false}
+      ]
+    }
+  ]
+}

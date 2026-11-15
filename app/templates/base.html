@@ -21,6 +21,8 @@
       <div class="side-group">工作区</div>
       <a href="/" class="{% if page == 'index' %}active{% endif %}"><span class="ico">总</span><span>总览</span></a>
       <a href="/workbench" class="{% if page in ('workbench', 'result') %}active{% endif %}"><span class="ico">台</span><span>Schema 对比工作台</span></a>
+      <a href="/lineage" class="{% if page in ('lineage', 'lineage_result', 'lineage_attempt') %}active{% endif %}"><span class="ico">谱</span><span>多版本字段谱系</span></a>
+      <a href="/lineage/history" class="{% if page == 'lineage_history' %}active{% endif %}"><span class="ico">史</span><span>谱系历史与发布</span></a>
       <a href="/review" class="{% if page == 'review' %}active{% endif %}"><span class="ico">核</span><span>复核与导出</span></a>
 
       <div class="side-group">业务模块</div>

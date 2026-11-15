@@ -1,0 +1,58 @@
+{
+  "key": "E",
+  "label": "E · 发布被拒绝（复用的 id 被新字段占用 + 类型收窄）",
+  "table": "dws_member_profile",
+  "description": "同一张会员画像表再演进到 v4：field_id 2 被新字段 risk_score 占用、display_name 迁到 id 8（典型的 id 复用 + 列名迁移，身份证据互相矛盾）；同时 member_level 由 int64 收窄回 int32。两项都未人工决议，演示「发布失败保留旧版」。",
+  "expected": "发布失败 / 1 项身份冲突隔离 + 1 项类型阻断 / 已发布旧版继续生效",
+  "resolutions": {
+    "v1-2025.06>v2-2025.12:id:2:nickname>display_name": "same_field"
+  },
+  "versions": [
+    {
+      "version": "v1-2025.06",
+      "window": "dt < '2025-12-01'",
+      "fields": [
+        {"id": 1, "name": "member_id", "type": "string", "nullable": false, "default": null, "partition": false},
+        {"id": 2, "name": "nickname", "type": "string", "nullable": true, "default": null, "partition": false},
+        {"id": 3, "name": "member_level", "type": "int32", "nullable": false, "default": null, "partition": false},
+        {"id": 4, "name": "dt", "type": "date", "nullable": false, "default": null, "partition": true}
+      ]
+    },
+    {
+      "version": "v2-2025.12",
+      "window": "dt >= '2025-12-01' AND dt < '2026-06-01'",
+      "fields": [
+        {"id": 1, "name": "member_id", "type": "string", "nullable": false, "default": null, "partition": false},
+        {"id": 2, "name": "display_name", "type": "string", "nullable": true, "default": null, "partition": false},
+        {"id": 3, "name": "member_level", "type": "int32", "nullable": false, "default": null, "partition": false},
+        {"id": 4, "name": "dt", "type": "date", "nullable": false, "default": null, "partition": true},
+        {"id": 6, "name": "loyalty_points", "type": "int64", "nullable": false, "default": 0, "partition": false}
+      ]
+    },
+    {
+      "version": "v3-2026.06",
+      "window": "dt >= '2026-06-01' AND dt < '2026-09-01'",
+      "fields": [
+        {"id": 1, "name": "member_id", "type": "string", "nullable": false, "default": null, "partition": false},
+        {"id": 2, "name": "display_name", "type": "string", "nullable": true, "default": null, "partition": false},
+        {"id": 3, "name": "member_level", "type": "int64", "nullable": false, "default": null, "partition": false},
+        {"id": 4, "name": "dt", "type": "date", "nullable": false, "default": null, "partition": true},
+        {"id": 6, "name": "loyalty_points", "type": "int64", "nullable": false, "default": 0, "partition": false},
+        {"id": 7, "name": "region", "type": "string", "nullable": true, "default": null, "partition": false}
+      ]
+    },
+    {
+      "version": "v4-2026.09",
+      "window": "dt >= '2026-09-01'",
+      "fields": [
+        {"id": 1, "name": "member_id", "type": "string", "nullable": false, "default": null, "partition": false},
+        {"id": 2, "name": "risk_score", "type": "double", "nullable": true, "default": null, "partition": false},
+        {"id": 3, "name": "member_level", "type": "int32", "nullable": false, "default": null, "partition": false},
+        {"id": 4, "name": "dt", "type": "date", "nullable": false, "default": null, "partition": true},
+        {"id": 6, "name": "loyalty_points", "type": "int64", "nullable": false, "default": 0, "partition": false},
+        {"id": 7, "name": "region", "type": "string", "nullable": true, "default": null, "partition": false},
+        {"id": 8, "name": "display_name", "type": "string", "nullable": true, "default": null, "partition": false}
+      ]
+    }
+  ]
+}

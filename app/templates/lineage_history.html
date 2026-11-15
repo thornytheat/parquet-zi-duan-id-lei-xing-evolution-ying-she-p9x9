@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}谱系历史 · {{ app_name }}{% endblock %}
+{% block crumb %}谱系历史{% endblock %}
+{% block meta %}<span class="dot {{ 'ok' if versions else 'warn' }}"></span>已发布 {{ versions|length }} 版 · 发布尝试 {{ attempts|length }} 次{% endblock %}
+{% block actions %}
+<a class="btn secondary small" href="/lineage">回谱系工作台</a>
+{% endblock %}
+{% block status_left %}已发布谱系快照与发布尝试都落在 data/lineage/*（最多保留 {{ max_kept }} 版）· 发布失败不覆盖旧版{% endblock %}
+{% block status_right %}下载方案与结果页按谱系版本一一对应{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">谱系历史</h1>
+    <p class="page-sub">
+      每张表保留一条正在生效的谱系版本；发布新批次会生成新版本并保留旧版本快照。
+      发布失败（存在未决议歧义）只留下发布尝试记录，不写快照、不动生效版本。
+    </p>
+  </div>
+  <div class="page-head-actions">
+    <a class="btn small" href="/lineage">执行新构建</a>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>当前生效版本</h2>
+    <div class="panel-actions"><span class="tag">{{ active_by_table|length }} 张表</span></div>
+  </div>
+  {% if active_by_table %}
+  <div class="table-wrap">
+    <table class="dense">
+      <thead><tr><th style="width:220px">表</th><th style="width:200px">生效谱系</th><th style="width:170px">batch</th><th style="width:200px">发布时间</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for table, entry in active_by_table.items() %}
+        <tr>
+          <td><code>{{ table }}</code></td>
+          <td>{% if entry %}<a class="mono" href="/lineage/result/{{ entry.lineage_version }}">{{ entry.lineage_version }}</a>{% else %}<span class="tag warn">尚无</span>{% endif %}</td>
+          <td class="small mono">{% if entry %}{{ entry.batch_hash[:16] }}{% else %}—{% endif %}</td>
+          <td class="small">{% if entry %}{{ entry.published_at }}{% else %}—{% endif %}</td>
+          <td class="nowrap">
+            {% if entry %}
+            <a href="/lineage/result/{{ entry.lineage_version }}">查看</a> ·
+            <a href="/api/lineage/versions/{{ entry.lineage_version }}/read-plan.sql">读取方案</a> ·
+            <a href="/api/lineage/versions/{{ entry.lineage_version }}">JSON</a>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty" style="padding:14px"><strong>还没有任何生效谱系</strong>先到谱系工作台发布一版。</div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>已发布谱系版本（{{ versions|length }}）</h2>
+    <div class="panel-actions"><a class="btn secondary small" href="/api/lineage">JSON</a></div>
+  </div>
+  {% if versions %}
+  <div class="table-wrap roomy">
+    <table class="dense">
+      <thead><tr><th style="width:220px">谱系版本 / 时间</th><th style="width:190px">表</th><th style="width:200px">版本序列</th>
+        <th style="width:90px">逻辑字段</th><th style="width:100px">状态</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for v in versions %}
+        <tr>
+          <td><a class="mono" href="/lineage/result/{{ v.lineage_version }}">{{ v.lineage_version }}</a>
+            <div class="small muted">{{ v.published_at }} · {{ v.source }}</div></td>
+          <td class="small"><code>{{ v.table }}</code></td>
+          <td class="small">{{ v.version_labels|join(' → ') }}</td>
+          <td class="num">{{ v.stats.logical_fields }}</td>
+          <td>{% if v.is_current %}<span class="tag ok">现行</span>{% else %}<span class="tag">历史</span>{% endif %}</td>
+          <td class="nowrap">
+            <a href="/lineage/result/{{ v.lineage_version }}">查看</a> ·
+            <a href="/api/lineage/versions/{{ v.lineage_version }}/read-plan.sql">读取方案</a> ·
+            <a href="/api/lineage/versions/{{ v.lineage_version }}">JSON</a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty" style="padding:14px">还没有已发布谱系。</div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>发布尝试（{{ attempts|length }}）</h2>
+    <div class="panel-actions"><a class="btn secondary small" href="/api/lineage/attempts">JSON</a></div>
+  </div>
+  {% if attempts %}
+  <div class="table-wrap roomy">
+    <table class="dense">
+      <thead><tr><th style="width:230px">尝试 / 时间</th><th style="width:190px">表</th><th style="width:170px">结果</th>
+        <th style="width:90px">阻断</th><th style="width:100px">新增映射</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for a in attempts %}
+        <tr>
+          <td><a class="mono" href="/lineage/attempt/{{ a.attempt_id }}">{{ a.attempt_id }}</a>
+            <div class="small muted">{{ a.created_at }} · {{ a.source }}</div></td>
+          <td class="small"><code>{{ a.table }}</code></td>
+          <td>
+            {% if a.status == 'published' %}<span class="tag ok">{{ a.status_label }}</span>
+            {% elif a.status == 'deduped' %}<span class="tag warn">{{ a.status_label }}</span>
+            {% else %}<span class="tag err">{{ a.status_label }}</span>{% endif %}
+          </td>
+          <td class="num">{{ a.blocking_count }}</td>
+          <td class="num">{{ a.mappings_added }}</td>
+          <td class="nowrap">
+            <a href="/lineage/attempt/{{ a.attempt_id }}">查看</a>
+            {% if a.lineage_version %} · <a href="/lineage/result/{{ a.lineage_version }}">谱系</a>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty" style="padding:14px">还没有发布尝试。</div>
+  {% endif %}
+  <div class="panel-actions">
+    <span class="small muted" style="align-self:center">样例复跑：</span>
+    {% for s in samples %}<a class="btn secondary small" href="/lineage?sample={{ s.key }}">谱系样例 {{ s.key }}</a>{% endfor %}
+    <a class="btn small" href="/lineage">执行新构建</a>
+  </div>
+</section>
+{% endblock %}

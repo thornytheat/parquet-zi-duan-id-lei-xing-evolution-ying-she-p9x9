@@ -17,6 +17,30 @@
   </div>
 </div>
 
+<section class="panel">
+  <div class="panel-head">
+    <h2>多版本字段谱系</h2>
+    <div class="panel-actions">
+      <span class="tag">先隔离歧义 · 再合成谱系</span>
+      <a class="btn secondary small" href="/lineage?sample=D">谱系样例 D</a>
+      <a class="btn small" href="/lineage">进入谱系工作台</a>
+    </div>
+  </div>
+  <div class="panel-body tight">
+    <p class="small" style="margin:0 0 8px">
+      字段在多个版本间反复改名、换号、变类型时，把 v1 → v2 → … → vN 的演进逐段取证：
+      复用的 field_id、同名换号、id 与列名互相矛盾、类型收窄或未在矩阵内的变化，先隔离为歧义；
+      人工决议后才合成一条可发布的字段谱系。历史分区继续按旧列名 / 旧 id 读取，
+      新查询统一按逻辑字段取数；发布失败时旧版继续生效，重跑同一批不新增映射。
+    </p>
+    <p class="small" style="margin:0">
+      <a class="btn secondary small" href="/lineage?sample=D">D · 三版可发布谱系</a>
+      <a class="btn secondary small" href="/lineage?sample=E">E · 发布被拒绝（id 复用冲突）</a>
+      <a class="btn secondary small" href="/lineage/history">谱系历史与发布尝试</a>
+    </p>
+  </div>
+</section>
+
 <div class="kpi-strip">
   <div class="kpi">
     <div class="k-label">样例对</div>

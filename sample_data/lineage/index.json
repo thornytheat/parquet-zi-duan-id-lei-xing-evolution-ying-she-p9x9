@@ -1,0 +1,6 @@
+{
+  "samples": [
+    {"key": "D", "label": "D · 三版可发布谱系", "table": "dws_member_profile", "file": "d.json", "expected": "可发布 / 歧义已决议 / 回填 1"},
+    {"key": "E", "label": "E · 发布被拒绝（id 复用冲突 + 类型收窄）", "table": "dws_member_profile", "file": "e.json", "expected": "发布失败 / 旧版保留"}
+  ]
+}

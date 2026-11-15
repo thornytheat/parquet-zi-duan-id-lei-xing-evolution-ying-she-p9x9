@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}发布失败 {{ attempt.attempt_id }} · {{ app_name }}{% endblock %}
+{% block crumb %}发布尝试{% endblock %}
+{% block meta %}<span class="dot {{ 'ok' if attempt.status == 'published' else 'err' }}"></span>{{ attempt.status_label }}{% endblock %}
+{% block actions %}
+<a class="btn secondary small" href="/lineage/history">谱系历史</a>
+<a class="btn secondary small" href="/lineage">回谱系工作台</a>
+{% endblock %}
+{% block status_left %}
+发布尝试 {{ attempt.attempt_id }} · {{ attempt.created_at }} · 来源 {{ attempt.source }} · table <code>{{ attempt.table }}</code>
+{% endblock %}
+{% block status_right %}
+{% if attempt.active_version_after %}当前生效 <code>{{ attempt.active_version_after }}</code>{% else %}尚无生效版本{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">发布尝试 · <span class="mono">{{ attempt.attempt_id }}</span></h1>
+    <p class="page-sub">
+      表 <code>{{ attempt.table }}</code> · 批量哈希 <code>{{ attempt.batch_hash[:16] }}</code> ·
+      状态
+      {% if attempt.status == 'rejected' %}<span class="tag err">{{ attempt.status_label }}</span>
+      {% elif attempt.status == 'deduped' %}<span class="tag warn">{{ attempt.status_label }}</span>
+      {% else %}<span class="tag ok">{{ attempt.status_label }}</span>{% endif %}
+    </p>
+  </div>
+</div>
+
+<div class="kpi-strip">
+  <div class="kpi {{ 'err' if attempt.status == 'rejected' else 'ok' }}">
+    <div class="k-label">发布结果</div>
+    <div class="k-value" style="font-size:15px">{{ attempt.status_label }}</div>
+    <div class="k-note">{{ '未写入任何新映射' if attempt.status == 'rejected' else '映射新增 ' ~ attempt.mappings_added }}</div>
+  </div>
+  <div class="kpi">
+    <div class="k-label">发布前生效</div>
+    <div class="k-value" style="font-size:14px">{{ attempt.active_version_before or '（无）' }}</div>
+    <div class="k-note">旧版继续提供服务</div>
+  </div>
+  <div class="kpi {{ 'ok' if attempt.status != 'rejected' else 'warn' }}">
+    <div class="k-label">发布后生效</div>
+    <div class="k-value" style="font-size:14px">{{ attempt.active_version_after or '（无）' }}</div>
+    <div class="k-note">{{ attempt.lineage_version or '未生成新版本' }}</div>
+  </div>
+  <div class="kpi {{ 'err' if attempt.summary.blocking else 'ok' }}">
+    <div class="k-label">未决议阻断</div>
+    <div class="k-value">{{ attempt.summary.blocking }}</div>
+    <div class="k-note">逻辑字段 {{ attempt.summary.logical_fields }}</div>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>{{ attempt.message }}</h2>
+    <div class="panel-actions">
+      {% if attempt.lineage_version %}
+      <a class="btn small" href="/lineage/result/{{ attempt.lineage_version }}">打开谱系版本</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="panel-body tight">
+    <p class="small" style="margin:0">
+      发布失败不会覆盖旧版：已发布谱系、结果页、历史列表和下载方案仍指向
+      {% if attempt.active_version_before %}<code>{{ attempt.active_version_before }}</code>{% else %}尚未存在的生效版本{% endif %}。
+      消除下列歧义后重跑同一批输入，若内容未变则仍是同一个批量哈希，不会新增映射。
+    </p>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>发布被拒绝的歧义（{{ ambiguity_rows|length }}）</h2>
+    <div class="panel-actions"><span class="tag err">必须先人工决议</span></div>
+  </div>
+  {% if ambiguity_rows %}
+  <div class="table-wrap roomy">
+    <table class="dense">
+      <thead><tr><th style="width:150px">分类 / 代码</th><th>证据与隔离原因</th><th style="width:240px">涉及字段</th><th style="width:160px">决议</th></tr></thead>
+      <tbody>
+      {% for a in ambiguity_rows %}
+        <tr>
+          <td class="small">
+            <span class="tag {{ 'err' if a.blocking else 'ok' }}">{{ a.severity_label }}</span>
+            <div>{{ a.category_label }}</div><div class="hint mono">{{ a.code }}</div>
+          </td>
+          <td class="small">{{ a.text }}<div class="hint">key <code>{{ a.key }}</code></div></td>
+          <td class="small">{{ a.fields_text }}</td>
+          <td class="small">
+            {% if a.resolved %}<span class="tag ok">{{ a.resolution.decision }}</span>
+            {% elif a.options %}<span class="tag warn">待人工决议</span>
+              <div class="hint">可选：{% for o in a.options %}{{ o.label }}{% if not loop.last %} / {% endif %}{% endfor %}</div>
+            {% else %}<span class="tag err">不可放行</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty" style="padding:14px">该尝试没有歧义。</div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>本次构建的逻辑字段（参考，未发布）</h2>
+    <div class="panel-actions"><span class="tag">未落库</span></div>
+  </div>
+  <div class="table-wrap roomy">
+    <table class="dense">
+      <thead><tr><th style="width:70px">逻辑 ID</th><th style="width:170px">逻辑列名</th><th style="width:90px">状态</th><th style="width:130px">统一类型</th><th style="width:200px">覆盖版本</th><th>隔离项</th></tr></thead>
+      <tbody>
+      {% for lf in build.get('logical_fields', []) %}
+        <tr>
+          <td class="mono">{{ lf.logical_id }}</td>
+          <td><code>{{ lf.name }}</code></td>
+          <td><span class="tag {{ 'ok' if lf.status == 'active' else '' }}">{{ lf.status_label }}</span></td>
+          <td>{% if lf.unified_type %}<code>{{ lf.unified_type }}</code>{% else %}<span class="tag err">未收敛</span>{% endif %}</td>
+          <td class="small">{{ lf.versions|join(' · ') }}</td>
+          <td class="small">{% if lf.isolation %}<span class="tag err">{{ lf.isolation|length }}</span>{% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

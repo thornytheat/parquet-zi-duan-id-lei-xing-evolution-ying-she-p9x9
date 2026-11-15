@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}谱系 {{ snapshot.lineage_version }} · {{ app_name }}{% endblock %}
+{% block crumb %}谱系结果{% endblock %}
+{% block meta %}
+<span class="dot {{ 'ok' if is_current else 'warn' }}"></span>
+{{ '现行版本' if is_current else '历史版本' }} · 逻辑字段 {{ snapshot.stats.logical_fields }}
+{% endblock %}
+{% block actions %}
+<a class="btn secondary small" href="/lineage/history">谱系历史</a>
+<a class="btn small" href="/api/lineage/versions/{{ snapshot.lineage_version }}/read-plan.sql">下载读取方案</a>
+{% endblock %}
+{% block status_left %}
+谱系版本 {{ snapshot.lineage_version }} · 发布于 {{ snapshot.published_at }} · 来源 {{ snapshot.source }} · batch {{ snapshot.batch_hash[:16] }}
+{% endblock %}
+{% block status_right %}表 <code>{{ snapshot.table }}</code> · {{ snapshot.version_labels|length }} 个版本 · {{ snapshot.stats.mappings }} 条版本映射{% endblock %}
+
+{% block content %}
+{% set st = snapshot.stats %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">字段谱系 · <span class="mono">{{ snapshot.lineage_version }}</span></h1>
+    <p class="page-sub">
+      表 <code>{{ snapshot.table }}</code> · 版本 {{ snapshot.version_labels|join(' → ') }} ·
+      批量哈希 <code>{{ snapshot.batch_hash[:16] }}</code>
+      {% if is_current %}
+      <span class="tag ok">现行</span>
+      {% else %}
+      <span class="tag warn">历史版本</span> · 当前生效 <code>{{ active_version or '（无）' }}</code>
+      {% endif %}
+    </p>
+  </div>
+  <div class="page-head-actions">
+    <a class="btn secondary small" href="/lineage">回谱系工作台</a>
+    <a class="btn secondary small" href="/api/lineage/versions/{{ snapshot.lineage_version }}">JSON</a>
+  </div>
+</div>
+
+<div class="kpi-strip">
+  <div class="kpi"><div class="k-label">版本</div><div class="k-value">{{ st.versions }}</div><div class="k-note">{{ snapshot.version_labels|join(' · ') }}</div></div>
+  <div class="kpi ok"><div class="k-label">逻辑字段</div><div class="k-value">{{ st.logical_fields }}</div><div class="k-note">现行 {{ st.active_fields }} · 退役 {{ st.retired_fields }}</div></div>
+  <div class="kpi"><div class="k-label">版本映射</div><div class="k-value">{{ st.mappings }}</div><div class="k-note">逻辑字段 × 物理列绑定</div></div>
+  <div class="kpi ok"><div class="k-label">歧义</div><div class="k-value">{{ st.ambiguities }}</div><div class="k-note">全部已决议 {{ st.resolved }} 项</div></div>
+  <div class="kpi {{ 'warn' if st.retired_fields else 'ok' }}"><div class="k-label">退役字段</div><div class="k-value">{{ st.retired_fields }}</div><div class="k-note">历史分区仍按旧方式读取</div></div>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>版本演进边界</h2>
+    <div class="panel-actions"><span class="tag">逐段取证</span></div>
+  </div>
+  <div class="table-wrap">
+    <table class="dense">
+      <thead><tr><th style="width:200px">版本</th><th style="width:90px">字段数</th><th style="width:150px">分区字段</th>
+        <th style="width:100px">相邻匹配</th><th style="width:80px">新增</th><th style="width:80px">删除</th><th style="width:100px">歧义</th></tr></thead>
+      <tbody>
+        {% for v in snapshot.versions %}
+        <tr>
+          <td><code>{{ v.version }}</code>{% if loop.first %}<span class="tag">起始</span>{% endif %}</td>
+          <td>{{ v.fields|length }}</td>
+          <td class="small">{{ v.partitions|join(', ') or '—' }}</td>
+          {% if loop.first %}
+          <td class="small muted">—</td><td class="small muted">—</td><td class="small muted">—</td><td class="small muted">—</td>
+          {% else %}
+          {% set row = version_timeline[loop.index0 - 1] %}
+          <td>{{ row.matched }}</td><td>{{ row.added }}</td><td>{{ row.removed }}</td>
+          <td>{% if row.ambiguities %}<span class="tag warn">{{ row.ambiguities }}</span>{% else %}0{% endif %}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>人工决议记录（{{ snapshot.ambiguities|length }} 项歧义）</h2>
+    <div class="panel-actions"><span class="tag ok">全部已决议才能发布</span></div>
+  </div>
+  {% if snapshot.ambiguities %}
+  <div class="table-wrap">
+    <table class="dense">
+      <thead><tr><th style="width:150px">分类 / 代码</th><th>证据</th><th style="width:150px">决议</th></tr></thead>
+      <tbody>
+      {% for a in snapshot.ambiguities %}
+        <tr>
+          <td class="small">{{ a.category_label }}<div class="hint mono">{{ a.code }}</div></td>
+          <td class="small">{{ a.text }}<div class="hint">key <code>{{ a.key }}</code></div></td>
+          <td class="small">
+            {% if a.resolution %}<span class="tag ok">{{ a.resolution.decision }}</span>
+            {% else %}<span class="tag err">未决议</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<div class="empty" style="padding:14px">本次发布没有歧义。</div>{% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>逻辑字段谱系（{{ snapshot.logical_fields|length }}）</h2>
+    <div class="panel-actions"><span class="tag">统一逻辑字段</span></div>
+  </div>
+  <div class="table-wrap roomy">
+    <table class="dense">
+      <thead><tr><th style="width:70px">逻辑 ID</th><th style="width:160px">逻辑列名</th><th style="width:80px">状态</th>
+        <th style="width:130px">统一类型</th><th style="width:190px">覆盖版本</th><th>改名 / 回填 / 说明</th></tr></thead>
+      <tbody>
+      {% for lf in snapshot.logical_fields %}
+        <tr>
+          <td class="mono">{{ lf.logical_id }}</td>
+          <td><code>{{ lf.name }}</code></td>
+          <td><span class="tag {{ 'ok' if lf.status == 'active' else '' }}">{{ lf.status_label }}</span></td>
+          <td>
+            {% if lf.unified_type %}<code>{{ lf.unified_type }}</code>{% else %}<span class="tag err">未收敛</span>{% endif %}
+            <div class="hint">{{ confidence_labels.get(lf.type_confidence, lf.type_confidence) }}</div>          </td>
+          <td class="small">{{ lf.versions|join(' · ') }}</td>
+          <td class="small">
+            {% if lf.renames %}
+            {% for r in lf.renames %}<div>改名：{{ r.from_version }} <code>{{ r.from_name }}</code> → {{ r.to_version }} <code>{{ r.to_name }}</code></div>{% endfor %}
+            {% endif %}
+            {% if lf.type_trail %}
+            {% for t in lf.type_trail %}<div class="hint">{{ t.from_type }}→{{ t.to_type}}（{{ t.verdict }}{% if t.accepted %} · 人工接受{% endif %}）</div>{% endfor %}
+            {% endif %}
+            {% if lf.requires_backfill %}<div><span class="tag warn">需回填</span>带默认值新增列</div>{% endif %}
+            {% for n in lf.notes %}<div class="hint">{{ n }}</div>{% endfor %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>逻辑字段 × 版本 物理绑定</h2>
+    <div class="panel-actions"><span class="tag">历史兼容 + 新查询统一</span></div>
+  </div>
+  <div class="table-wrap roomy">
+    <table class="dense">
+      <thead>
+        <tr><th style="width:180px">逻辑字段</th>
+        {% for v in binding_matrix.versions %}<th>{{ v }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+      {% for row in binding_matrix.rows %}
+        <tr>
+          <td><code>{{ row.name }}</code><div class="hint mono">{{ row.logical_id }}{% if row.status == 'retired' %} · 已退役{% endif %}</div></td>
+          {% for c in row.cells %}
+          <td class="small">
+            {% if c.bound %}
+              <code>{{ c.physical_name }}</code>
+              <div class="hint">id {{ c.field_id if c.field_id is not none else '—' }} · {{ c.physical_type }}</div>
+            {% else %}
+              <span class="tag">无此列</span><div class="hint">按 NULL 读取</div>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>读取方案</h2>
+    <div class="panel-actions">
+      <span class="tag">{{ download_name }}</span>
+      <a class="btn small" href="/api/lineage/versions/{{ snapshot.lineage_version }}/read-plan.sql">下载 SQL</a>
+    </div>
+  </div>
+  <div class="table-wrap roomy">
+    <table class="dense">
+      <thead><tr><th style="width:180px">版本</th><th style="width:170px">逻辑字段</th><th style="width:160px">物理列</th><th>表达式</th></tr></thead>
+      <tbody>
+      {% for r in read_plan_rows %}
+        <tr>
+          <td><code>{{ r.version }}</code></td>
+          <td><code>{{ r.logical_name }}</code><div class="hint mono">{{ r.logical_id }}</div></td>
+          <td class="small">{% if r.missing %}<span class="tag">缺列</span>{% else %}<code>{{ r.physical_name }}</code>{% endif %}</td>
+          <td class="small"><code>{{ r.expression }}</code><div class="hint">{{ r.note }}</div></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="panel-body tight">
+    <pre class="sql">{{ snapshot.plan_sql }}</pre>
+  </div>
+</section>
+{% endblock %}

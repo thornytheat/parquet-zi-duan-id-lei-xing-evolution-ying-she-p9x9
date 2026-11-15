@@ -133,3 +133,36 @@ def load_sample(key: str) -> dict:
         "raw_new": read(entry["new"]),
         "raw_consumers": read(entry["consumers"]),
     }
+
+
+def load_lineage_sample_index() -> list[dict]:
+    index_path = settings.SAMPLE_DIR / "lineage" / "index.json"
+    if not index_path.exists():
+        raise SchemaError(f"谱系样例索引缺失：{index_path}")
+    doc = json.loads(index_path.read_text(encoding="utf-8"))
+    return doc.get("samples", [])
+
+
+def load_lineage_sample(key: str) -> dict:
+    key = (key or "").strip().upper()
+    entry = next((item for item in load_lineage_sample_index() if item.get("key") == key), None)
+    if entry is None:
+        raise SchemaError(f"未知谱系样例 {key!r}，可选：D / E")
+    path = settings.SAMPLE_DIR / "lineage" / entry["file"]
+    if not path.exists():
+        raise SchemaError(f"谱系样例文件缺失：{entry['file']}")
+    raw = path.read_text(encoding="utf-8")
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SchemaError(f"谱系样例 {key} 不是合法 JSON：第 {exc.lineno} 行第 {exc.colno} 列 {exc.msg}")
+    return {
+        "key": key,
+        "label": entry.get("label", key),
+        "table": entry.get("table") or doc.get("table"),
+        "expected": entry.get("expected", ""),
+        "description": doc.get("description", entry.get("label", "")),
+        "versions": doc.get("versions", []),
+        "resolutions": doc.get("resolutions", {}),
+        "raw": raw,
+    }

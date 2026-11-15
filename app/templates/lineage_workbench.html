@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% block title %}字段谱系工作台 · {{ app_name }}{% endblock %}
+{% block crumb %}字段谱系工作台{% endblock %}
+{% block meta %}
+{% if preview %}<span class="dot {{ 'ok' if preview.publishable else 'err' }}"></span>
+  预演 {{ selected }} · {{ '可发布' if preview.publishable else '有阻断不可发布' }}
+{% else %}<span class="dot err"></span>预演失败{% endif %}
+{% endblock %}
+{% block actions %}
+<a class="btn secondary small" href="/lineage/history">谱系历史</a>
+<a class="btn secondary small" href="/review">单次对比复核</a>
+{% endblock %}
+{% block status_left %}多版本：先隔离歧义 → 再合成逻辑字段谱系 · 发布被阻断时旧版继续生效{% endblock %}
+{% block status_right %}当前预演 {{ selected }} · 未落库{% endblock %}
+
+{% block content %}
+{% if preview %}{% set s = preview.stats %}{% endif %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">多版本字段谱系工作台</h1>
+    <p class="page-sub">
+      按版本顺序提交同表 schema。系统逐段取证：证据一致的相邻字段才连成同一条逻辑字段；
+      复用的 field_id、同名换号、id 与列名互相矛盾、类型收窄或未在矩阵内的类型变化，全部先隔离为歧义，
+      不靠改名或默认值猜过去。歧义决议后才合成一条可发布的字段谱系。
+    </p>
+  </div>
+</div>
+
+<div class="split">
+  <section class="panel pane-sticky" id="lin-input">
+    <div class="panel-head">
+      <h2>版本序列与人工决议</h2>
+      <div class="panel-actions"><span class="tag">先隔离</span></div>
+    </div>
+    <div class="panel-body">
+      <form id="lineage-form" method="post" action="/lineage/preview">
+      <div class="field">
+        <label for="lineage-sample">内置谱系样例</label>
+        <select id="lineage-sample" name="sample">
+          {% for item in samples %}
+          <option value="{{ item.key }}" {{ 'selected' if item.key == selected else '' }}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+        <p class="hint" id="lineage-sample-hint">{{ sample.description }}（预期：{{ sample.expected }}）</p>
+      </div>
+      <div class="field">
+        <label for="lineage-table">表名</label>
+        <input type="text" id="lineage-table" name="table" value="{{ sample.table }}" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="lineage-versions">版本序列（JSON 数组，按时间顺序）</label>
+        <textarea id="lineage-versions" name="versions" spellcheck="false" style="min-height:260px">{{ versions_text }}</textarea>
+        <p class="hint">每项：<code>{"version": 名称, "fields": [{id, name, type, nullable, default, partition}]}</code></p>
+      </div>
+      <div class="field">
+        <label for="lineage-resolutions">人工决议（JSON 对象，可选）</label>
+        <textarea id="lineage-resolutions" name="resolutions" spellcheck="false" style="min-height:90px">{{ resolutions_text }}</textarea>
+        <p class="hint">
+          键为歧义 key（复制下方歧义表的 key），值为决议：
+          <code>same_field</code> / <code>split</code> / <code>follow_name</code> /
+          <code>keep_id</code> / <code>split_all</code> / <code>accept_type</code>。
+          未命中的 key 会直接报错，不会被静默忽略。
+        </p>
+      </div>
+      </form>
+      <div id="lineage-error" class="alert alert-error" role="alert" hidden></div>
+      <div id="lineage-ok" class="alert alert-info" hidden></div>
+    </div>
+    <div class="panel-actions">
+      <button type="submit" form="lineage-form" class="secondary">重新预演</button>
+      <button type="button" id="btn-lineage-publish">发布谱系</button>
+      <span class="small muted" style="align-self:center">
+        当前生效：{% if current %}<code>{{ current.lineage_version }}</code>{% else %}（尚无）{% endif %}
+      </span>
+    </div>
+  </section>
+
+  <div>
+    {% if error %}
+    <section class="panel"><div class="panel-body"><div class="alert alert-error">{{ error }}</div></div></section>
+    {% elif preview %}
+    <div class="kpi-strip">
+      <div class="kpi">
+        <div class="k-label">版本 / 物理字段</div>
+        <div class="k-value">{{ s.versions }} / {{ s.physical_fields }}</div>
+        <div class="k-note">{{ preview.version_labels|join(' → ') }}</div>
+      </div>
+      <div class="kpi ok">
+        <div class="k-label">逻辑字段</div>
+        <div class="k-value">{{ s.logical_fields }}</div>
+        <div class="k-note">现行 {{ s.active_fields }} · 退役 {{ s.retired_fields }} · 映射 {{ s.mappings }} 条</div>
+      </div>
+      <div class="kpi warn">
+        <div class="k-label">歧义（已隔离）</div>
+        <div class="k-value">{{ s.ambiguities }}</div>
+        <div class="k-note">已决议 {{ s.resolved }} 项</div>
+      </div>
+      <div class="kpi {% if s.blocking %}err{% else %}ok{% endif %}">
+        <div class="k-label">未决议阻断</div>
+        <div class="k-value">{{ s.blocking }}</div>
+        <div class="k-note">{{ '禁止发布' if s.blocking else '可以发布' }}</div>
+      </div>
+      <div class="kpi">
+        <div class="k-label">谱系版本</div>
+        <div class="k-value" style="font-size:14px"><code>{{ preview.lineage_version }}</code></div>
+        <div class="k-note">batch {{ preview.batch_hash[:16] }}</div>
+      </div>
+    </div>
+
+    {% if not preview.publishable %}
+    <section class="panel">
+      <div class="panel-body tight">
+        <div class="alert alert-error" role="alert" style="margin:0">
+          <strong>发布将被拒绝：</strong>{{ preview.publish_blocked_reason }}。
+          历史分区继续按已发布的旧谱系读取，本次构建不会改动现行版本。消除歧义后点「重新预演」即可看到最新结论。
+        </div>
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="panel" id="lin-amb">
+      <div class="panel-head">
+        <h2>歧义隔离清单（{{ preview.ambiguities|length }}）</h2>
+        <div class="panel-actions">
+          <span class="tag err">阻断 {{ s.blocking }}</span>
+          <span class="tag ok">已决议 {{ s.resolved }}</span>
+        </div>
+      </div>
+      {% if preview.ambiguities %}
+      <div class="table-wrap roomy">
+        <table class="dense">
+          <thead><tr><th style="width:140px">分类 / 代码</th><th>证据与隔离原因</th><th style="width:230px">涉及字段</th><th style="width:150px">决议</th></tr></thead>
+          <tbody>
+          {% for a in preview.ambiguities %}
+            <tr>
+              <td>
+                <span class="tag {% if a.blocking %}err{% else %}ok{% endif %}">{{ a.severity_label }}</span>
+                <div class="small">{{ a.category_label }}</div>
+                <div class="hint mono">{{ a.code }}</div>
+              </td>
+              <td class="small">
+                {{ a.text }}
+                <div class="hint">key <code>{{ a.key }}</code></div>
+              </td>
+              <td class="small">{{ a.fields_text }}</td>
+              <td class="small">
+                {% if a.resolved %}
+                  <span class="tag ok">{{ a.resolution.decision }}</span>
+                {% elif a.options %}
+                  <span class="tag warn">待人工决议</span>
+                  <div class="hint">可选：{% for o in a.options %}{{ o.label }}{% if not loop.last %} / {% endif %}{% endfor %}</div>
+                {% else %}
+                  <span class="tag err">不可放行</span>
+                  <div class="hint">必须改 schema 或拆两阶段迁移</div>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty" style="padding:14px"><strong>没有歧义</strong>所有相邻版本都只有 id+name 双证据一致的稳定字段。</div>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>逻辑字段谱系（{{ preview.logical_fields|length }}）</h2>
+        <div class="panel-actions"><span class="tag">再合成</span></div>
+      </div>
+      <div class="table-wrap roomy">
+        <table class="dense">
+          <thead><tr><th style="width:70px">逻辑 ID</th><th style="width:150px">逻辑列名</th>
+            <th style="width:80px">状态</th><th style="width:120px">统一类型</th>
+            <th style="width:180px">覆盖版本</th><th>改名 / 类型 / 回填</th></tr></thead>
+          <tbody>
+          {% for lf in preview.logical_fields %}
+            <tr>
+              <td class="mono">{{ lf.logical_id }}</td>
+              <td><code>{{ lf.name }}</code></td>
+              <td><span class="tag {{ 'ok' if lf.status == 'active' else '' }}">{{ lf.status_label }}</span></td>
+              <td>
+                {% if lf.unified_type %}<code>{{ lf.unified_type }}</code>
+                {% else %}<span class="tag err">未收敛</span>{% endif %}
+                <div class="hint">{{ lf.type_confidence_label }}</div>
+              </td>
+              <td class="small">{{ lf.versions|join(' · ') }}</td>
+              <td class="small">
+                {% if lf.renames_text != '—' %}<div>改名：{{ lf.renames_text }}</div>{% endif %}
+                {% if lf.requires_backfill %}<div><span class="tag warn">需回填</span>带默认值新增</div>{% endif %}
+                {% if lf.isolation_count %}<div><span class="tag err">隔离中</span>涉及 {{ lf.isolation_count }} 项未决议歧义</div>{% endif %}
+                {% for n in lf.notes %}<div class="hint">{{ n }}</div>{% endfor %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>逻辑字段 × 版本 物理绑定</h2>
+        <div class="panel-actions"><span class="tag">历史兼容 / 新查询统一</span></div>
+      </div>
+      <div class="table-wrap roomy">
+        <table class="dense">
+          <thead>
+            <tr><th style="width:180px">逻辑字段</th>
+            {% for v in preview.binding_matrix.versions %}<th>{{ v }}</th>{% endfor %}</tr>
+          </thead>
+          <tbody>
+          {% for row in preview.binding_matrix.rows %}
+            <tr>
+              <td><code>{{ row.name }}</code><div class="hint mono">{{ row.logical_id }}{% if row.status == 'retired' %} · 已退役{% endif %}</div></td>
+              {% for c in row.cells %}
+              <td class="small">
+                {% if c.bound %}
+                  <code>{{ c.physical_name }}</code>
+                  <div class="hint">id {{ c.field_id if c.field_id is not none else '—' }} · {{ c.physical_type }}</div>
+                {% else %}
+                  <span class="tag">无此列</span><div class="hint">按 NULL 读取</div>
+                {% endif %}
+              </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="panel-body tight">
+        <p class="small muted" style="margin:0">
+          每个逻辑字段仍保留逐版本物理绑定：历史分区按当时的列名 / field_id 原样读取；
+          新查询按逻辑列名取数，由下方读取方案按版本选择表达式。缺失列一律 NULL，不拿默认值伪造历史值。
+        </p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>统一读取方案预览</h2>
+        <div class="panel-actions"><span class="tag">{{ preview.read_plan_rows|length }} 条版本×字段</span></div>
+      </div>
+      <div class="panel-body tight">
+        <details class="help" open>
+          <summary>方式 A（历史分区旧读取方式） / 方式 B（新查询统一逻辑字段）</summary>
+          <pre class="sql">{{ preview.plan_sql }}</pre>
+        </details>
+      </div>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var qs = function (s) { return document.querySelector(s); };
+  function payload() {
+    var versionsRaw = qs('#lineage-versions').value;
+    var resolutionsRaw = qs('#lineage-resolutions').value;
+    var body = { table: qs('#lineage-table').value.trim(), versions: versionsRaw };
+    if (resolutionsRaw.trim()) body.resolutions = resolutionsRaw;
+    return body;
+  }
+  function showError(msg) {
+    var box = qs('#lineage-error');
+    box.hidden = false;
+    box.textContent = '执行失败：' + msg;
+    qs('#lineage-ok').hidden = true;
+  }
+  qs('#btn-lineage-publish').addEventListener('click', async function () {
+    qs('#lineage-error').hidden = true;
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var res = await fetch('/api/lineage/publish', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload())
+      });
+      var data = await res.json();
+      if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+      qs('#lineage-ok').hidden = false;
+      qs('#lineage-ok').textContent = data.status_label + '：' + (data.message || '') + ' 正在跳转…';
+      window.location.href = data.redirect;
+    } catch (err) { showError(err.message); }
+    finally { btn.disabled = false; }
+  });
+  var sel = qs('#lineage-sample');
+  if (sel) {
+    sel.addEventListener('change', function () {
+      // 切换内置样例走 GET，整页载入该样例的版本序列与决议
+      window.location.href = '/lineage?sample=' + encodeURIComponent(sel.value);
+    });
+  }
+})();
+</script>
+{% endblock %}
